@@ -266,12 +266,12 @@ func EmulateModeSense(cmd *SCSICmd) (SCSIResponse, error) {
 }
 
 func EmulateModeSelect(cmd *SCSICmd) (SCSIResponse, error) {
-	select_ten := (cmd.GetCDB(0) == scsi.ModeSelect10)
+	selectTen := (cmd.GetCDB(0) == scsi.ModeSelect10)
 	page := cmd.GetCDB(2) & 0x3f
 	subpage := cmd.GetCDB(3)
 	allocLen := cmd.XferLen()
 	hdrLen := 4
-	if select_ten {
+	if selectTen {
 		hdrLen = 8
 	}
 	inBuf := make([]byte, 512)
@@ -285,12 +285,12 @@ func EmulateModeSelect(cmd *SCSICmd) (SCSIResponse, error) {
 		return SCSIResponse{}, err
 	}
 	if n >= len(inBuf) {
-		return cmd.SetSenseData(scsi.SenseIllegalRequest, scsi.AscParameterListLengthError), nil
+		return cmd.CheckCondition(scsi.SenseIllegalRequest, scsi.AscParameterListLengthError), nil
 	}
 
 	cdbone := cmd.GetCDB(1)
 	if cdbone&0x10 == 0 || cdbone&0x01 != 0 {
-		return cmd.SetSenseData(scsi.SenseIllegalRequest, scsi.AscInvalidFieldInCdb), nil
+		return cmd.IllegalRequest(), nil
 	}
 
 	pgs := &bytes.Buffer{}
@@ -300,17 +300,17 @@ func EmulateModeSelect(cmd *SCSICmd) (SCSIResponse, error) {
 		gotSense = true
 	}
 	if !gotSense {
-		return cmd.SetSenseData(scsi.SenseIllegalRequest, scsi.AscInvalidFieldInCdb), nil
+		return cmd.IllegalRequest(), nil
 	}
 	b := pgs.Bytes()
 	if int(allocLen) < (hdrLen + len(b)) {
-		return cmd.SetSenseData(scsi.SenseIllegalRequest, scsi.AscParameterListLengthError), nil
+		return cmd.CheckCondition(scsi.SenseIllegalRequest, scsi.AscParameterListLengthError), nil
 	}
 	/* Verify what was selected is identical to what sense returns, since we
 	don't support actually setting anything. */
 	if !bytes.Equal(inBuf[hdrLen:len(b)], b) {
 		log.Errorf("not equal for some reason: %#v %#v", inBuf[hdrLen:len(b)], b)
-		return cmd.SetSenseData(scsi.SenseIllegalRequest, scsi.AscInvalidFieldInParameterList), nil
+		return cmd.CheckCondition(scsi.SenseIllegalRequest, scsi.AscInvalidFieldInParameterList), nil
 	}
 	return cmd.Ok(), nil
 }
