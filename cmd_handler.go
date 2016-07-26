@@ -45,9 +45,9 @@ func (h ReadWriterAtCmdHandler) HandleCommand(cmd *SCSICmd) (SCSIResponse, error
 	case scsi.ServiceActionIn16:
 		return EmulateServiceActionIn(cmd)
 	case scsi.ModeSense, scsi.ModeSense10:
-		return EmulateModeSense(cmd)
+		return EmulateModeSense(cmd, false)
 	case scsi.ModeSelect, scsi.ModeSelect10:
-		return EmulateModeSelect(cmd)
+		return EmulateModeSelect(cmd, false)
 	case scsi.Read6, scsi.Read10, scsi.Read12, scsi.Read16:
 		return EmulateRead(cmd, h.RW)
 	case scsi.Write6, scsi.Write10, scsi.Write12, scsi.Write16:
@@ -229,13 +229,15 @@ func CachingModePage(w io.Writer, wce bool) {
 	w.Write(buf)
 }
 
-func EmulateModeSense(cmd *SCSICmd) (SCSIResponse, error) {
+// EmulateModeSense responds to a static Mode Sense command. `wce` enables or diables
+// the SCSI "Write Cache Enabled" flag.
+func EmulateModeSense(cmd *SCSICmd, wce bool) (SCSIResponse, error) {
 	pgs := &bytes.Buffer{}
 	outlen := int(cmd.XferLen())
 
 	page := cmd.GetCDB(2)
 	if page == 0x3f || page == 0x08 {
-		CachingModePage(pgs, false)
+		CachingModePage(pgs, wce)
 	}
 	scsiCmd := cmd.Command()
 
@@ -265,7 +267,9 @@ func EmulateModeSense(cmd *SCSICmd) (SCSIResponse, error) {
 	return cmd.Ok(), nil
 }
 
-func EmulateModeSelect(cmd *SCSICmd) (SCSIResponse, error) {
+// EmulateModeSelect checks that the only mode selected is the static one returned from
+// EmulateModeSense. `wce` should match the Write Cache Enabled of the EmulateModeSense call.
+func EmulateModeSelect(cmd *SCSICmd, wce bool) (SCSIResponse, error) {
 	selectTen := (cmd.GetCDB(0) == scsi.ModeSelect10)
 	page := cmd.GetCDB(2) & 0x3f
 	subpage := cmd.GetCDB(3)
@@ -296,7 +300,7 @@ func EmulateModeSelect(cmd *SCSICmd) (SCSIResponse, error) {
 	pgs := &bytes.Buffer{}
 	// TODO(barakmich): select over handlers. Today we have one.
 	if page == 0x08 && subpage == 0 {
-		CachingModePage(pgs, false)
+		CachingModePage(pgs, wce)
 		gotSense = true
 	}
 	if !gotSense {
