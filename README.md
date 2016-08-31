@@ -13,11 +13,36 @@ This package creates two types of Handlers (much like `net/http`) for [SCSI bloc
 From here, the [Linux IO Target](http://linux-iscsi.org/wiki/Main_Page) kernel stack can expose the SCSI target however it likes. This includes iSCSI, vHost, etc. For further details, see the [LIO wiki](http://linux-iscsi.org/wiki/Main_Page).
 
 ### Usage
-First, to use this package at all, you'll need the appropriate kernel module:
+First, to use this package, you'll need the appropriate kernel modules and configfs mounted
+
+#### Make sure configfs is mounted 
+
+This may already be true on your system, depending on kernel configuration. Many distributions do this by default. Check if it's mounted to `/sys/kernel/config` with
+
+```
+mount | grep configfs
+```
+
+Which should respond
+```
+configfs on /sys/kernel/config type configfs (rw,relatime)
+```
+
+To mount it explicitly:
+```
+sudo modprobe configfs
+sudo mkdir -p /sys/kernel/config
+sudo mount -t configfs none /sys/kernel/config
+```
+
+#### Use the TCMU module
+
+Many distros include the module, but few activate it by default.
 
 ```
 sudo modprobe target_core_user
 ```
+
 
 Now that that's settled, there's [tcmufile.go](cmd/tcmufile/tcmufile.go) for a quick example binary that serves an image file under /dev/tcmufile/myfile. 
 
