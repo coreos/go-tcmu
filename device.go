@@ -236,7 +236,7 @@ func writeLines(target string, lines []string) error {
 func (d *Device) start() (err error) {
 	err = d.findDevice()
 	if err != nil {
-		return
+		return err
 	}
 	d.cmdChan = make(chan *SCSICmd, 5)
 	d.respChan = make(chan SCSIResponse, 5)
