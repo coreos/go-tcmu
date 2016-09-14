@@ -53,8 +53,8 @@ handler := &tcmu.SCSIHandler{
         HBA: 30, // Choose a virtual HBA number. 30 is fine.
         LUN: 0,  // The LUN attached to this HBA. Multiple LUNs can work on the same HBA, this differentiates them.
         WWN: tcmu.NaaWWN{
-                OUI:      "000000",                    // Or provide your OUI
-                VendorID: GenerateSerial("foobar"), // Or provide a vendor id/serial number
+                OUI:      "000000",                      // Or provide your OUI
+                VendorID: tcmu.GenerateSerial("foobar"), // Or provide a vendor id/serial number
                 // Optional: Provide further information for your WWN
                 // VendorIDExt: "0123456789abcdef", 
         },
@@ -64,7 +64,7 @@ handler := &tcmu.SCSIHandler{
                 BlockSize:  1024,            // Size of logical blocks, eg, 1K
         },
         DevReady: tcmu.SingleThreadedDevReady(
-                ReadWriterAtCmdHandler{      // Or replace with your own handler
+                tcmu.ReadWriterAtCmdHandler{      // Or replace with your own handler
                         RW: rw,
                 }),
 }
