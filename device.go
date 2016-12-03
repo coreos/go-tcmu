@@ -63,15 +63,11 @@ func OpenTCMUDevice(devPath string, scsi *SCSIHandler) (*Device, error) {
 		uioFd:   -1,
 		hbaDir:  fmt.Sprintf(configDirFmt, scsi.HBA),
 	}
-	err := d.Close()
-	if err != nil {
-		return nil, err
-	}
 	if err := d.preEnableTcmu(); err != nil {
-		return nil, err
+		return d, err
 	}
 	if err := d.start(); err != nil {
-		return nil, err
+		return d, err
 	}
 
 	return d, d.postEnableTcmu()
@@ -340,7 +336,7 @@ func (d *Device) teardown() error {
 	for _, p := range pathsToRemove {
 		err := remove(p)
 		if err != nil {
-			return err
+			logrus.Errorf("Failed to remove: %v", err)
 		}
 	}
 
