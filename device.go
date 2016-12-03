@@ -24,6 +24,8 @@ const (
 	scsiDir      = "/sys/kernel/config/target/loopback"
 )
 
+var toClean map[string]bool
+
 type Device struct {
 	scsi    *SCSIHandler
 	devPath string
@@ -57,6 +59,7 @@ func (d *Device) Sizes() DataSizes {
 // OpenTCMUDevice creates the virtual device based on the details in the SCSIHandler, eventually creating a device under devPath (eg, "/dev") with the file name scsi.VolumeName.
 // The returned Device represents the open device connection to the kernel, and must be closed.
 func OpenTCMUDevice(devPath string, scsi *SCSIHandler) (*Device, error) {
+	toClean = make(map[string]bool)
 	d := &Device{
 		scsi:    scsi,
 		devPath: devPath,
@@ -122,24 +125,31 @@ func (d *Device) postEnableTcmu() error {
 	logrus.Debugf("Creating directory: %s", lunPath)
 	if err := os.MkdirAll(lunPath, 0755); err != nil && !os.IsExist(err) {
 		return err
+	} else if err == nil {
+		toClean[lunPath] = true
+		toClean[path.Join(lunPath, d.scsi.VolumeName)] = true
 	}
 
 	logrus.Debugf("Linking: %s => %s", path.Join(lunPath, d.scsi.VolumeName), path.Join(d.hbaDir, d.scsi.VolumeName))
 	if err := os.Symlink(path.Join(d.hbaDir, d.scsi.VolumeName), path.Join(lunPath, d.scsi.VolumeName)); err != nil {
 		return err
 	}
+	toClean[path.Join(d.hbaDir, d.scsi.VolumeName)] = true
 
 	return d.createDevEntry()
 }
 
 func (d *Device) createDevEntry() error {
-	os.MkdirAll(d.devPath, 0755)
+	if err := os.MkdirAll(d.devPath, 0755); err != nil && !os.IsExist(err) {
+		return err
+	}
 
 	dev := filepath.Join(d.devPath, d.scsi.VolumeName)
 
 	if _, err := os.Stat(dev); err == nil {
 		return fmt.Errorf("Device %s already exists, can not create", dev)
 	}
+	toClean[dev] = true
 
 	tgt, _ := d.getSCSIPrefixAndWnn()
 
@@ -213,6 +223,7 @@ func writeLines(target string, lines []string) error {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
+		toClean[dir] = true
 	} else if !stat.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
 	}
@@ -334,17 +345,21 @@ func (d *Device) teardown() error {
 	}
 
 	for _, p := range pathsToRemove {
-		err := remove(p)
-		if err != nil {
-			logrus.Errorf("Failed to remove: %v", err)
+		if k, _ := toClean[p]; k {
+			err := remove(p)
+			if err != nil {
+				logrus.Errorf("Failed to remove: %v", err)
+			}
 		}
 	}
 
 	// Should be cleaned up automatically, but if it isn't remove it
 	if _, err := os.Stat(dev); err == nil {
-		err := remove(dev)
-		if err != nil {
-			return err
+		if k, _ := toClean[dev]; k {
+			err := remove(dev)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
