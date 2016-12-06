@@ -21,7 +21,7 @@ func (d *Device) beginPoll() {
 		var err error
 		n, err = unix.Read(d.uioFd, buf)
 		if n == -1 && err != nil {
-			fmt.Println(err)
+			log.Errorf("error poll reading: %s", err)
 			break
 		}
 		for {
@@ -51,7 +51,7 @@ func (d *Device) recvResponse() {
 		/* Tell the fd there's something new */
 		n, err = unix.Write(d.uioFd, buf)
 		if n == -1 && err != nil {
-			log.Errorln("poll write")
+			log.Errorf("error poll writing: %s", err)
 			return
 		}
 	}
