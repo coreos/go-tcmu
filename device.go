@@ -15,8 +15,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/prometheus/common/log"
+	"github.com/sirupsen/logrus"
 )
 
 const (
