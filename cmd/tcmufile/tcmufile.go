@@ -5,8 +5,8 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/coreos/go-tcmu"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -42,7 +42,6 @@ func main() {
 		}
 	}()
 	<-mainClose
-
 }
 
 func die(why string, args ...interface{}) {
