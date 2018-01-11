@@ -37,6 +37,8 @@ type Device struct {
 	cmdChan  chan *SCSICmd
 	respChan chan SCSIResponse
 	cmdTail  uint32
+
+	toClean map[string]bool
 }
 
 // WWN provides two WWNs, one for the device itself and one for the loopback
@@ -62,16 +64,13 @@ func OpenTCMUDevice(devPath string, scsi *SCSIHandler) (*Device, error) {
 		devPath: devPath,
 		uioFd:   -1,
 		hbaDir:  fmt.Sprintf(configDirFmt, scsi.HBA),
-	}
-	err := d.Close()
-	if err != nil {
-		return nil, err
+		toClean: make(map[string]bool),
 	}
 	if err := d.preEnableTcmu(); err != nil {
-		return nil, err
+		return d, err
 	}
 	if err := d.start(); err != nil {
-		return nil, err
+		return d, err
 	}
 
 	return d, d.postEnableTcmu()
@@ -89,7 +88,7 @@ func (d *Device) Close() error {
 }
 
 func (d *Device) preEnableTcmu() error {
-	err := writeLines(path.Join(d.hbaDir, d.scsi.VolumeName, "control"), []string{
+	err := d.writeLines(path.Join(d.hbaDir, d.scsi.VolumeName, "control"), []string{
 		fmt.Sprintf("dev_size=%d", d.scsi.DataSizes.VolumeSize),
 		fmt.Sprintf("dev_config=%s", d.GetDevConfig()),
 		fmt.Sprintf("hw_block_size=%d", d.scsi.DataSizes.BlockSize),
@@ -99,7 +98,7 @@ func (d *Device) preEnableTcmu() error {
 		return err
 	}
 
-	return writeLines(path.Join(d.hbaDir, d.scsi.VolumeName, "enable"), []string{
+	return d.writeLines(path.Join(d.hbaDir, d.scsi.VolumeName, "enable"), []string{
 		"1",
 	})
 }
@@ -115,7 +114,7 @@ func (d *Device) getLunPath(prefix string) string {
 func (d *Device) postEnableTcmu() error {
 	prefix, nexusWnn := d.getSCSIPrefixAndWnn()
 
-	err := writeLines(path.Join(prefix, "nexus"), []string{
+	err := d.writeLines(path.Join(prefix, "nexus"), []string{
 		nexusWnn,
 	})
 	if err != nil {
@@ -126,24 +125,31 @@ func (d *Device) postEnableTcmu() error {
 	logrus.Debugf("Creating directory: %s", lunPath)
 	if err := os.MkdirAll(lunPath, 0755); err != nil && !os.IsExist(err) {
 		return err
+	} else if err == nil {
+		d.toClean[lunPath] = true
+		d.toClean[path.Join(lunPath, d.scsi.VolumeName)] = true
 	}
 
 	logrus.Debugf("Linking: %s => %s", path.Join(lunPath, d.scsi.VolumeName), path.Join(d.hbaDir, d.scsi.VolumeName))
 	if err := os.Symlink(path.Join(d.hbaDir, d.scsi.VolumeName), path.Join(lunPath, d.scsi.VolumeName)); err != nil {
 		return err
 	}
+	d.toClean[path.Join(d.hbaDir, d.scsi.VolumeName)] = true
 
 	return d.createDevEntry()
 }
 
 func (d *Device) createDevEntry() error {
-	os.MkdirAll(d.devPath, 0755)
+	if err := os.MkdirAll(d.devPath, 0755); err != nil && !os.IsExist(err) {
+		return err
+	}
 
 	dev := filepath.Join(d.devPath, d.scsi.VolumeName)
 
 	if _, err := os.Stat(dev); err == nil {
 		return fmt.Errorf("Device %s already exists, can not create", dev)
 	}
+	d.toClean[dev] = true
 
 	tgt, _ := d.getSCSIPrefixAndWnn()
 
@@ -210,13 +216,14 @@ func mknod(device string, major, minor int) error {
 	return syscall.Mknod(device, uint32(fileMode), dev)
 }
 
-func writeLines(target string, lines []string) error {
+func (d *Device) writeLines(target string, lines []string) error {
 	dir := path.Dir(target)
 	if stat, err := os.Stat(dir); os.IsNotExist(err) {
 		logrus.Debugf("Creating directory: %s", dir)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
+		d.toClean[dir] = true
 	} else if !stat.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
 	}
@@ -338,17 +345,21 @@ func (d *Device) teardown() error {
 	}
 
 	for _, p := range pathsToRemove {
-		err := remove(p)
-		if err != nil {
-			return err
+		if k, _ := d.toClean[p]; k {
+			err := remove(p)
+			if err != nil {
+				logrus.Errorf("Failed to remove: %v", err)
+			}
 		}
 	}
 
 	// Should be cleaned up automatically, but if it isn't remove it
 	if _, err := os.Stat(dev); err == nil {
-		err := remove(dev)
-		if err != nil {
-			return err
+		if k, _ := d.toClean[dev]; k {
+			err := remove(dev)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
