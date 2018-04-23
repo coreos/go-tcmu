@@ -330,21 +330,21 @@ func EmulateRead(cmd *SCSICmd, r io.ReaderAt) (SCSIResponse, error) {
 		cmd.Buf = make([]byte, length)
 	}
 	n, err := r.ReadAt(cmd.Buf[:length], int64(offset))
-	if n < length {
-		log.Errorln("read/read failed: unable to copy enough")
-		return cmd.MediumError(), nil
-	}
 	if err != nil {
 		log.Errorln("read/read failed: error:", err)
 		return cmd.MediumError(), nil
 	}
-	n, err = cmd.Write(cmd.Buf[:length])
 	if n < length {
-		log.Errorln("read/write failed: unable to copy enough")
+		log.Errorln("read/read failed: unable to copy enough")
 		return cmd.MediumError(), nil
 	}
+	n, err = cmd.Write(cmd.Buf[:length])
 	if err != nil {
 		log.Errorln("read/write failed: error:", err)
+		return cmd.MediumError(), nil
+	}
+	if n < length {
+		log.Errorln("read/write failed: unable to copy enough")
 		return cmd.MediumError(), nil
 	}
 	return cmd.Ok(), nil
@@ -361,21 +361,21 @@ func EmulateWrite(cmd *SCSICmd, r io.WriterAt) (SCSIResponse, error) {
 		cmd.Buf = make([]byte, length)
 	}
 	n, err := cmd.Read(cmd.Buf[:int(length)])
-	if n < length {
-		log.Errorln("write/read failed: unable to copy enough")
-		return cmd.MediumError(), nil
-	}
 	if err != nil {
 		log.Errorln("write/read failed: error:", err)
 		return cmd.MediumError(), nil
 	}
-	n, err = r.WriteAt(cmd.Buf[:length], int64(offset))
 	if n < length {
-		log.Errorln("write/write failed: unable to copy enough")
+		log.Errorln("write/read failed: unable to copy enough")
 		return cmd.MediumError(), nil
 	}
+	n, err = r.WriteAt(cmd.Buf[:length], int64(offset))
 	if err != nil {
 		log.Errorln("write/write failed: error:", err)
+		return cmd.MediumError(), nil
+	}
+	if n < length {
+		log.Errorln("write/write failed: unable to copy enough")
 		return cmd.MediumError(), nil
 	}
 	return cmd.Ok(), nil
