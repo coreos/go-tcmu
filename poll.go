@@ -41,13 +41,10 @@ func (d *Device) beginPoll() {
 
 func (d *Device) recvResponse() {
 	var n int
+	var err error
 	buf := make([]byte, 4)
 	for resp := range d.respChan {
-		err := d.completeCommand(resp)
-		if err != nil {
-			log.Errorf("error completing command: %s", err)
-			return
-		}
+		d.completeCommand(resp)
 		/* Tell the fd there's something new */
 		n, err = unix.Write(d.uioFd, buf)
 		if n == -1 && err != nil {
@@ -57,7 +54,7 @@ func (d *Device) recvResponse() {
 	}
 }
 
-func (d *Device) completeCommand(resp SCSIResponse) error {
+func (d *Device) completeCommand(resp SCSIResponse) {
 	off := d.tailEntryOff()
 	for d.entHdrOp(off) != tcmuOpCmd {
 		d.mbSetTail((d.mbCmdTail() + uint32(d.entHdrGetLen(off))) % d.mbCmdrSize())
@@ -71,7 +68,6 @@ func (d *Device) completeCommand(resp SCSIResponse) error {
 		d.copyEntRespSenseData(off, resp.senseBuffer)
 	}
 	d.mbSetTail((d.mbCmdTail() + uint32(d.entHdrGetLen(off))) % d.mbCmdrSize())
-	return nil
 }
 
 func (d *Device) getNextCommand() (*SCSICmd, error) {
